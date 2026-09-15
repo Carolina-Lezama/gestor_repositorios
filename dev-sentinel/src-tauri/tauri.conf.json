@@ -21,6 +21,22 @@
       "csp": null
     }
   },
+  "plugins": {
+    "shell": {
+      "scopes": [
+        {
+          "name": "run-git",
+          "cmd": "git",
+          "args": true
+        },
+        {
+          "name": "run-code",
+          "cmd": "code",
+          "args": true
+        }
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

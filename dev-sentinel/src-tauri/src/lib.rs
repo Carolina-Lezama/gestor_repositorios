@@ -132,7 +132,30 @@ fn delete_heavy_folder(folder_path: String) -> Result<(), String> {
     Ok(())
 }
 
-// --- REGISTRO DE LA APP TAURI ---
+#[tauri::command]
+fn get_days_since_last_commit(repo_path: String) -> Result<u64, String> {
+    // Obtenemos el timestamp (UNIX) del último commit
+    let output = Command::new("git")
+        .current_dir(&repo_path)
+        .args(["log", "-1", "--format=%ct"])
+        .output()
+        .map_err(|e| format!("Error de git: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let timestamp: i64 = stdout.trim().parse().unwrap_or(0);
+
+    if timestamp == 0 {
+        return Ok(0); // Si no hay commits o falla
+    }
+
+    let current_time = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    let days = (current_time - timestamp) / (60 * 60 * 24);
+    Ok(days as u64)
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -143,7 +166,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             scan_repositories,
             calculate_heavy_folders,
-            delete_heavy_folder
+            delete_heavy_folder,
+            get_days_since_last_commit // <- NUEVA
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
