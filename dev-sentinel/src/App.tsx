@@ -9,9 +9,11 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   XCircle,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from "lucide-react";
 import StorageReclaimer from "./components/StorageReclaimer";
+import PortfolioGenerator from "./components/PortfolioGenerator";
 
 // Estructura que coincide con nuestro backend en Rust
 interface RepoStatus {
@@ -24,6 +26,7 @@ export default function App() {
   const [rootPath, setRootPath] = useState<string | null>(null);
   const [repos, setRepos] = useState<RepoStatus[]>([]);
   const [isScanning, setIsScanning] = useState(false);
+  const [selectedRepoForReadme, setSelectedRepoForReadme] = useState<string | null>(null);
 
   // Seleccionar directorio y escanear
   const handleSelectFolder = async () => {
@@ -52,20 +55,22 @@ export default function App() {
 
   // --- ACCIONES RÁPIDAS ---
 
-  const openInEditor = async (repoPath: string) => {
-    // Requiere tener VS Code en el PATH del sistema
-    await Command.create("run-code", [repoPath]).execute();
-  };
+const openInEditor = async (repoPath: string) => {
+  try {
+    await invoke("open_in_vscode", { path: repoPath });
+  } catch (error) {
+    console.error("Error abriendo VS Code:", error);
+  }
+};
 
-  const gitPush = async (repoPath: string) => {
-    try {
-      await Command.create("run-git", ["-C", repoPath, "push"]).execute();
-      // Refrescar el estado después de subir
-      if (rootPath) scanRepositories(rootPath);
-    } catch (error) {
-      console.error("Error en git push:", error);
-    }
-  };
+const gitPush = async (repoPath: string) => {
+  try {
+    await invoke("git_push_repo", { path: repoPath });
+    if (rootPath) scanRepositories(rootPath);
+  } catch (error) {
+    console.error("Error en git push:", error);
+  }
+};
 
   // Extraer el nombre de la carpeta de la ruta completa
   const getRepoName = (path: string) => {
@@ -144,6 +149,13 @@ export default function App() {
                   >
                     <Code size={16} /> Code
                   </button>
+
+                  <button
+                    onClick={() => setSelectedRepoForReadme(repo.path)}
+                    className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 py-2 rounded-lg text-sm font-medium transition-colors text-indigo-400"
+                  >
+                    <FileText size={16} /> Ficha
+                  </button>
                   
                   {repo.has_unpushed_commits && !repo.has_uncommitted_changes && (
                     <button 
@@ -177,6 +189,14 @@ export default function App() {
 
       {!isScanning && repos.length > 0 && (
         <StorageReclaimer repos={repos} />
+      )}
+
+      {/* MODAL GENERADOR DE README */}
+      {selectedRepoForReadme && (
+        <PortfolioGenerator
+          repoPath={selectedRepoForReadme}
+          onClose={() => setSelectedRepoForReadme(null)}
+        />
       )}
 
     </div>

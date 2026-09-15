@@ -22,20 +22,9 @@
     }
   },
   "plugins": {
-    "shell": {
-      "scopes": [
-        {
-          "name": "run-git",
-          "cmd": "git",
-          "args": true
-        },
-        {
-          "name": "run-code",
-          "cmd": "code",
-          "args": true
-        }
-      ]
-    }
+  "shell": {
+    "open": true
+  }
   },
   "bundle": {
     "active": true,

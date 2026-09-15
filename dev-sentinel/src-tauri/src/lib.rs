@@ -50,14 +50,15 @@ fn scan_repositories(root_path: String) -> Result<Vec<RepoStatus>, String> {
                 let has_uncommitted_changes = !status_output.stdout.is_empty();
 
                 // 2. Revisar commits sin subir (git log)
-                // Nota: Esto puede fallar si no hay rama remota (upstream), por eso usamos unwrap_or_default
                 let log_output = Command::new("git")
                     .current_dir(path)
                     .args(["log", "@{u}..HEAD", "--oneline"])
-                    .output()
-                    .unwrap_or_default();
+                    .output();
 
-                let has_unpushed_commits = !log_output.stdout.is_empty();
+                let has_unpushed_commits = match log_output {
+                    Ok(output) => !output.stdout.is_empty(),
+                    Err(_) => false,
+                };
 
                 repos.push(RepoStatus {
                     path: repo_path,
@@ -167,8 +168,101 @@ pub fn run() {
             scan_repositories,
             calculate_heavy_folders,
             delete_heavy_folder,
-            get_days_since_last_commit // <- NUEVA
+            get_days_since_last_commit,
+            generate_readme_markdown,
+            open_in_vscode,
+            git_push_repo
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+fn generate_readme_markdown(repo_path: String, description: String) -> Result<String, String> {
+    let base_path = std::path::Path::new(&repo_path);
+    let mut tech_stack = Vec::new();
+
+    // 1. Lectura de package.json (Node.js)
+    let pkg_path = base_path.join("package.json");
+    if pkg_path.exists() {
+        if let Ok(content) = fs::read_to_string(pkg_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(deps) = json.get("dependencies").and_then(|d| d.as_object()) {
+                    tech_stack.extend(deps.keys().cloned());
+                }
+            }
+        }
+    }
+
+    // 2. Lectura de requirements.txt (Python)
+    let req_path = base_path.join("requirements.txt");
+    if req_path.exists() {
+        if let Ok(content) = fs::read_to_string(req_path) {
+            for line in content.lines() {
+                let clean = line.trim();
+                if !clean.is_empty() && !clean.starts_with('#') {
+                    let name = clean
+                        .split(&['=', '>', '<', '~'][..])
+                        .next()
+                        .unwrap_or("")
+                        .trim();
+                    if !name.is_empty() {
+                        tech_stack.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    let repo_name = base_path.file_name().unwrap_or_default().to_string_lossy();
+    let stack_str = if tech_stack.is_empty() {
+        "`General`".to_string()
+    } else {
+        tech_stack
+            .iter()
+            .map(|t| format!("`{}`", t))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    let markdown = format!(
+        "# {}\n\n## Descripción\n{}\n\n## 🛠 Tech Stack\n{}\n\n##  Instalación\n```bash\n# Clona este repositorio e instala sus dependencias\n```",
+        repo_name, description, stack_str
+    );
+
+    Ok(markdown)
+}
+
+#[tauri::command]
+fn open_in_vscode(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "code", &path])
+            .spawn()
+            .map_err(|e| format!("Error al abrir VS Code: {}", e))?;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Command::new("code")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Error al abrir VS Code: {}", e))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn git_push_repo(path: String) -> Result<(), String> {
+    let output = Command::new("git")
+        .current_dir(&path)
+        .args(["push"])
+        .output()
+        .map_err(|e| format!("Error ejecutando git push: {}", e))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
 }
